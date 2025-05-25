@@ -1,0 +1,192 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ad Bot Mini App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .container {
+            text-align: center;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 18px;
+            background-color: #ff4500;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .points {
+            font-size: 16px;
+            margin: 10px 0;
+            color: #28a745;
+        }
+        .feedback {
+            margin-top: 10px;
+        }
+        .feedback button {
+            background-color: #1e90ff;
+            padding: 8px 15px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Ad Bot</h2>
+        <div class="points">Your Points: <span id="userPoints">0</span></div>
+        <button id="showAdBtn" onclick="showAd()">Earn Rewards - Watch Ad!</button>
+        <button id="dummyBtn1" disabled>Dummy</button>
+        <button id="dummyBtn2" disabled>Dummy</button>
+        <div class="feedback">
+            <p>Did you like the ad?</p>
+            <button onclick="submitFeedback('liked')">Yes</button>
+            <button onclick="submitFeedback('disliked')">No</button>
+        </div>
+    </div>
+
+    <!-- Telegram WebApp Script -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Monetag Ad Script -->
+    <script src='//libtl.com/sdk.js' data-zone='9374950' data-sdk='show_9374950'></script>
+
+    <script>
+        const showAdBtn = document.getElementById('showAdBtn');
+        const userPointsDisplay = document.getElementById('userPoints');
+        let userPoints = localStorage.getItem('userPoints') ? parseInt(localStorage.getItem('userPoints')) : 0;
+
+        // Update points display
+        userPointsDisplay.textContent = userPoints;
+
+        // Telegram Mini App Initialization
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+
+        // Function to show ad and handle timer
+        function showAd(autoTriggered = false) {
+            // Disable the button while ad is loading
+            showAdBtn.disabled = true;
+            showAdBtn.innerText = 'Wait Ads loading...';
+
+            try {
+                // Trigger Monetag Ad
+                if (typeof show_9374950 === 'function') {
+                    show_9374950({ 
+                        type: 'inApp', 
+                        inAppSettings: { 
+                            frequency: 5, 
+                            capping: 0.1, 
+                            interval: 10, 
+                            timeout: 3, 
+                            everyPage: false 
+                        } 
+                    });
+                    console.log("Monetag Ad triggered successfully");
+
+                    // Award points for watching ad
+                    userPoints += 10; // Award 10 points per ad
+                    localStorage.setItem('userPoints', userPoints);
+                    userPointsDisplay.textContent = userPoints;
+                } else {
+                    console.error("show_9374950 function is not defined. Ensure Monetag SDK is loaded.");
+                }
+            } catch (error) {
+                console.error("Error loading Monetag Ad:", error);
+            }
+
+            // Set a 15-second timer
+            setTimeout(() => {
+                // After 15 seconds, re-enable the button
+                showAdBtn.disabled = false;
+                showAdBtn.innerText = 'Earn Rewards - Watch Ad!';
+
+                // Auto-refresh ad after 20 seconds if the user is still active
+                if (!autoTriggered) {
+                    setTimeout(() => {
+                        if (document.hasFocus()) { // Check if the app is in focus
+                            showAd(true);
+                        }
+                    }, 20000); // 20 seconds after ad completion
+                }
+            }, 15000); // 15 seconds
+        }
+
+        // Function to handle feedback
+        function submitFeedback(feedback) {
+            console.log(`User feedback: ${feedback}`);
+            // You can send this feedback to your server or Monetag for better ad targeting
+            alert(`Thank you for your feedback! You ${feedback} the ad.`);
+        }
+
+        // Check if CloudStorage is supported (avoid runtime errors)
+        if (!window.Telegram?.WebApp?.CloudStorage) {
+            console.warn("CloudStorage is not supported in this Telegram WebApp version. Using localStorage instead.");
+        }
+
+        // Auto-show ad when the app loads (optional, to increase impressions)
+        window.onload = () => {
+            if (document.hasFocus()) {
+                showAd(true);
+            }
+        };
+    </script>
+</body>
+</html>
